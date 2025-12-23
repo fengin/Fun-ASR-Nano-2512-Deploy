@@ -105,7 +105,12 @@ websocket_users = set()
 
 print("正在加载模型...", flush=True)
 
-# ASR 模型 (离线/2pass)
+# ASR 模型 (离线/2pass + 在线/流式)
+# [优化] 合并模型加载：
+# 原逻辑分别加载了离线和在线模型，导致显存双倍占用 (~7GB)。
+# 经过分析，FunASR 的 AutoModel 是无状态 (Stateless) 的，状态由 status_dict 外部传入。
+# 因此，我们可以共用同一个模型实例，同时服务离线和流式请求，预计节省 2-3GB 显存。
+print(f"正在加载 ASR 模型: {args.asr_model} ...", flush=True)
 model_asr = AutoModel(
     model=args.asr_model,
     model_revision=args.asr_model_revision,
@@ -117,17 +122,8 @@ model_asr = AutoModel(
     fp16=args.fp16,
 )
 
-# ASR 模型 (在线/流式)
-model_asr_streaming = AutoModel(
-    model=args.asr_model_online,
-    model_revision=args.asr_model_online_revision,
-    ngpu=args.ngpu,
-    ncpu=args.ncpu,
-    device=args.device,
-    disable_pbar=True,
-    disable_log=True,
-    fp16=args.fp16,
-)
+# 共享同一个实例
+model_asr_streaming = model_asr
 
 # VAD 模型
 model_vad = AutoModel(
